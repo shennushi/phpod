@@ -26,6 +26,8 @@
 #include "php_pod.h"
 #include "php_pod_execute.h"
 
+ZEND_DECLARE_MODULE_GLOBALS(pod);
+
 #undef EX
 #define EX(element) execute_data->element
 
@@ -33,7 +35,11 @@ static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
 static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC);
-static void pod_dump_zval(zval *var);
+static void pod_dump_zval(zval *var TSRMLS_DC);
+
+PHP_INI_BEGIN()
+	STD_PHP_INI_ENTRY("pod.dump_path",  "", PHP_INI_ALL, OnUpdateString, dump_path, zend_pod_globals, pod_globals)
+PHP_INI_END()
 
 /*
  * Zend opcodes
@@ -181,16 +187,25 @@ static const char *pod_opcodes[] = {
 };
 
 /*
+ * Initializes global data
+ */
+static void pod_init_globals(zend_pod_globals *pod_globals)
+{
+	pod_globals->dump_path = "";
+	pod_globals->dump_file = stderr;
+}
+
+/*
  * Dumps the current opcode
  */
 static void pod_dump_opcode(TSRMLS_D)
 {
-	printf("+ Opcode %s\n", pod_opcodes[PX(opline)->opcode]);
+	fprintf(POD_G(dump_file), "+ Opcode %s\n", pod_opcodes[PX(opline)->opcode]);
 	pod_dump_op(&PX(opline)->op1, OP1_TYPE(PX(opline)) TSRMLS_CC);
 	pod_dump_op(&PX(opline)->op2, OP2_TYPE(PX(opline)) TSRMLS_CC);
-	printf("- Extended value: %lu\n", PX(opline)->extended_value);
-	printf("- Line: %u\n", PX(opline)->lineno);
-	printf("\n");
+	fprintf(POD_G(dump_file), "- Extended value: %lu\n", PX(opline)->extended_value);
+	fprintf(POD_G(dump_file), "- Line: %u\n", PX(opline)->lineno);
+	fprintf(POD_G(dump_file), "\n");
 }
 
 /*
@@ -212,15 +227,15 @@ static inline const char* pod_op_type_name(int op_type)
  */
 static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
 {
-	printf("- Op type: %s", pod_op_type_name(op_type));
+	fprintf(POD_G(dump_file), "- Op type: %s", pod_op_type_name(op_type));
 	
 	if (op_type == IS_CONST) {
-		pod_dump_zval(ZVAL_OP_CONST(op));
+		pod_dump_zval(ZVAL_OP_CONST(op) TSRMLS_CC);
 	} else if (op_type == IS_VAR) {
 		zval **var = T(OP_VAR(op)).var.ptr_ptr;
 		
 		if (var != NULL) {
-			pod_dump_zval(*var);
+			pod_dump_zval(*var TSRMLS_CC);
 		}
 	} else if (op_type == IS_CV) {
 		zval **var, ***ptr = &CV_OF(OP_VAR(op));
@@ -233,12 +248,12 @@ static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
 		}
 		if (var) {
 			if (var_name) {
-				printf(" '%s'", var_name);
+				fprintf(POD_G(dump_file), " '%s'", var_name);
 			}
-			pod_dump_zval(*var);
+			pod_dump_zval(*var TSRMLS_CC);
 		}
 	} else {
-		printf("\n");
+		fprintf(POD_G(dump_file), "\n");
 	}
 	
 }
@@ -246,22 +261,22 @@ static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
 /*
  * Dumps the zval
  */
-static void pod_dump_zval(zval *var)
+static void pod_dump_zval(zval *var TSRMLS_DC)
 {
 	switch (Z_TYPE_P(var)) {
 		case IS_LONG:
 		case IS_RESOURCE:
 		case IS_NULL:
 		case IS_BOOL:
-			printf(" '%ld'", Z_LVAL_P(var));
+			fprintf(POD_G(dump_file), " '%ld'", Z_LVAL_P(var));
 			break;
 		case IS_STRING:
-			printf(" '%s'", Z_STRVAL_P(var));
+			fprintf(POD_G(dump_file), " '%s'", Z_STRVAL_P(var));
 			break;
 		case IS_OBJECT:
-			printf(" object");				
+			fprintf(POD_G(dump_file), " object");				
 	}
-	printf(" (type: %s refcount: %d is_ref: %d)\n", zend_get_type_by_const(Z_TYPE_P(var)), Z_REFCOUNT_P(var), Z_ISREF_P(var));
+	fprintf(POD_G(dump_file), " (type: %s refcount: %d is_ref: %d)\n", zend_get_type_by_const(Z_TYPE_P(var)), Z_REFCOUNT_P(var), Z_ISREF_P(var));
 }
 
 /*
@@ -319,6 +334,8 @@ zend_vm_enter:
 	EX(function_state).arguments = NULL;
 	
 	next_opcode = EX(opline)->opcode;
+	
+	fprintf(POD_G(dump_file), "Current file: %s\n", EG(active_op_array)->filename);
 
 	while (1) {
     	int ret;
@@ -329,18 +346,14 @@ zend_vm_enter:
 #endif
 		pod_dump_opcode(TSRMLS_C);
 		
-		if (next_opcode == ZEND_PRINT) {
-			printf("-- Start output:\n");
-		}
-		
 		if ((ret = EX(opline)->handler(execute_data TSRMLS_CC)) > 0) {
 			switch (ret) {
 				case 1:
 					EG(in_execution) = original_in_execution;
 					if (next_opcode == ZEND_RETURN) {
 						if (EG(return_value_ptr_ptr)) {
-							printf("- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
-							pod_dump_zval(*EG(return_value_ptr_ptr));
+							fprintf(POD_G(dump_file), "- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
+							pod_dump_zval(*EG(return_value_ptr_ptr) TSRMLS_CC);
 						}
 					}
 					return;
@@ -352,9 +365,6 @@ zend_vm_enter:
 				default:
 					break;
 			}
-		}
-		if (next_opcode == ZEND_PRINT) {
-			printf("\n-- End output\n\n");
 		}
 		next_opcode = EX(opline)->opcode;
 	}
@@ -396,6 +406,8 @@ ZEND_GET_MODULE(pod)
  */
 PHP_MINIT_FUNCTION(pod)
 {
+	ZEND_INIT_MODULE_GLOBALS(pod, pod_init_globals, NULL);
+	REGISTER_INI_ENTRIES();
 	return SUCCESS;
 }
 /* }}} */
@@ -405,7 +417,7 @@ PHP_MINIT_FUNCTION(pod)
 PHP_MSHUTDOWN_FUNCTION(pod)
 {
 	zend_execute = old_execute;
-
+	UNREGISTER_INI_ENTRIES();
 	return SUCCESS;
 }
 /* }}} */
@@ -417,6 +429,10 @@ PHP_RINIT_FUNCTION(pod)
 	old_execute = zend_execute;
 	
 	zend_execute = pod_execute;
+	
+	if (memcmp(POD_G(dump_path), "", 1)) {
+		POD_G(dump_file) = fopen(POD_G(dump_path), "w");
+	}
 	
 	return SUCCESS;
 }
@@ -439,6 +455,7 @@ PHP_MINFO_FUNCTION(pod)
 	php_info_print_table_start();
 	php_info_print_table_header(2, "POD support", "enabled");
 	php_info_print_table_end();
+	DISPLAY_INI_ENTRIES();
 }
 /* }}} */
 
