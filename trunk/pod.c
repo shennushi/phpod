@@ -174,6 +174,10 @@ static const char *pod_opcodes[] = {
 	"ZEND_USER_OPCODE",
 	"ZEND_JMP_SET",
 	"ZEND_DECLARE_LAMBDA_FUNCTION"
+#if ZEND_ENGINE_2_4
+	,"ZEND_ADD_TRAIT",
+	"ZEND_BIND_TRAITS"
+#endif	
 };
 
 /*
