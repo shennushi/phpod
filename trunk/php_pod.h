@@ -27,6 +27,10 @@ extern zend_module_entry pod_module_entry;
 #include "TSRM.h"
 #endif
 
+#if ZEND_MODULE_API_NO >= 20100409
+#define ZEND_ENGINE_2_4
+#endif
+
 #define CHECK_SYMBOL_TABLES()
 #define ZEND_VM_SET_OPCODE(new_op) \
 	CHECK_SYMBOL_TABLES(); \
@@ -36,6 +40,20 @@ extern zend_module_entry pod_module_entry;
 #define T(offset) (*(temp_variable *)((char *) PX(Ts) + offset))
 #define CV_OF(i)     (EG(current_execute_data)->CVs[i])
 #define CV_DEF_OF(i) (EG(active_op_array)->vars[i])
+
+#ifdef ZEND_ENGINE_2_4
+# define ZNODE znode_op
+# define OP_VAR(op) op->var
+# define OP1_TYPE(op) op->op1_type
+# define OP2_TYPE(op) op->op2_type
+# define ZVAL_OP_CONST(op) op->zv
+#else
+# define ZNODE znode
+# define OP_VAR(op) op->u.var
+# define OP1_TYPE(op) op->op1.op_type
+# define OP2_TYPE(op) op->op2.op_type
+# define ZVAL_OP_CONST(op) &op->u.constant
+#endif
 
 PHP_MINIT_FUNCTION(pod);
 PHP_MSHUTDOWN_FUNCTION(pod);

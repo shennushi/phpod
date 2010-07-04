@@ -32,7 +32,7 @@
 static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
-static void pod_dump_op(znode *op TSRMLS_DC);
+static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC);
 static void pod_dump_zval(zval *var);
 
 /*
@@ -182,8 +182,10 @@ static const char *pod_opcodes[] = {
 static void pod_dump_opcode(TSRMLS_D)
 {
 	printf("+ Opcode %s\n", pod_opcodes[PX(opline)->opcode]);
-	pod_dump_op(&PX(opline)->op1 TSRMLS_CC);
-	pod_dump_op(&PX(opline)->op2 TSRMLS_CC);
+	pod_dump_op(&PX(opline)->op1, OP1_TYPE(PX(opline)) TSRMLS_CC);
+	pod_dump_op(&PX(opline)->op2, OP2_TYPE(PX(opline)) TSRMLS_CC);
+	printf("- Extended value: %lu\n", PX(opline)->extended_value);
+	printf("- Line: %u\n", PX(opline)->lineno);
 	printf("\n");
 }
 
@@ -204,24 +206,24 @@ static inline const char* pod_op_type_name(int op_type)
 /*
  * Dumps an operand 
  */
-static void pod_dump_op(znode *op TSRMLS_DC)
+static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
 {
-	printf("- Op type: %s", pod_op_type_name(op->op_type));
+	printf("- Op type: %s", pod_op_type_name(op_type));
 	
-	if (op->op_type == IS_CONST) {
-		pod_dump_zval(&op->u.constant);
-	} else if (op->op_type == IS_VAR) {
-		zval **var = T(op->u.var).var.ptr_ptr;
+	if (op_type == IS_CONST) {
+		pod_dump_zval(ZVAL_OP_CONST(op));
+	} else if (op_type == IS_VAR) {
+		zval **var = T(OP_VAR(op)).var.ptr_ptr;
 		
 		if (var != NULL) {
 			pod_dump_zval(*var);
 		}
-	} else if (op->op_type == IS_CV) {
-		zval **var, ***ptr = &CV_OF(op->u.var);
+	} else if (op_type == IS_CV) {
+		zval **var, ***ptr = &CV_OF(OP_VAR(op));
 		char *var_name = NULL;
 		
 		if (UNEXPECTED(*ptr == NULL)) {
-			var = pod_get_zval_cv_lookup(ptr, op->u.var, BP_VAR_W, &var_name TSRMLS_CC);
+			var = pod_get_zval_cv_lookup(ptr, OP_VAR(op), BP_VAR_W, &var_name TSRMLS_CC);
 		} else {
 			var = *ptr;
 		}
@@ -301,6 +303,12 @@ zend_vm_enter:
 		ZEND_VM_SET_OPCODE(op_array->opcodes);
 	}
 	
+#ifdef ZEND_ENGINE_2_4
+	if (!op_array->run_time_cache && op_array->last_cache_slot) {
+		op_array->run_time_cache = ecalloc(op_array->last_cache_slot, sizeof(void*));
+	}
+#endif
+	
 	EG(opline_ptr) = &EX(opline);
 
 	EX(function_state).function = (zend_function *) op_array;
@@ -326,8 +334,10 @@ zend_vm_enter:
 				case 1:
 					EG(in_execution) = original_in_execution;
 					if (next_opcode == ZEND_RETURN) {
-						printf("- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
-						pod_dump_zval(*EG(return_value_ptr_ptr));
+						if (EG(return_value_ptr_ptr)) {
+							printf("- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
+							pod_dump_zval(*EG(return_value_ptr_ptr));
+						}
 					}
 					return;
 				case 2:
