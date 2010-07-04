@@ -57,13 +57,17 @@ ZEND_END_MODULE_GLOBALS(pod)
 # define OP_VAR(op) op->var
 # define OP1_TYPE(op) op->op1_type
 # define OP2_TYPE(op) op->op2_type
+# define RES_TYPE(op) op->result_type
 # define ZVAL_OP_CONST(op) op->zv
+# define RETURN_VALUE_USED(opline) (!((opline)->result_type & EXT_TYPE_UNUSED))
 #else
 # define ZNODE znode
 # define OP_VAR(op) op->u.var
 # define OP1_TYPE(op) op->op1.op_type
 # define OP2_TYPE(op) op->op2.op_type
+# define RES_TYPE(op) op->result.op_type
 # define ZVAL_OP_CONST(op) &op->u.constant
+# define RETURN_VALUE_USED(opline) (!((opline)->result.u.EA.type & EXT_TYPE_UNUSED))
 #endif
 
 PHP_MINIT_FUNCTION(pod);
