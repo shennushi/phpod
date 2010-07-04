@@ -10,35 +10,14 @@ $ sudo make install
 = Using =
 
 {{{
-$ php -dextension=pod.so -r 'function a() {return "foo";} print a();'
-+ Opcode ZEND_NOP
-- Op type: IS_UNUSED
-- Op type: IS_UNUSED
-
-+ Opcode ZEND_DO_FCALL
-- Op type: IS_CONST value: 'a'
-- Op type: IS_UNUSED
+$ php -dextension=pod.so -r '$a = 1;'
++ Opcode ZEND_ASSIGN
+- Op type: IS_CV 'a' (type: null refcount: 3 is_ref: 0)
+- Op type: IS_CONST '1'
 
 + Opcode ZEND_RETURN
-- Op type: IS_CONST value: 'foo'
+- Op type: IS_CONST '0'
 - Op type: IS_UNUSED
 
-- EG(return_value_ptr_ptr) = 0x894f3dc (type: string refcount: 1 is_ref: 0)
-+ Opcode ZEND_PRINT
-- Op type: IS_VAR
-- Op type: IS_UNUSED
-
--- Start output:
-foo
--- End output
-
-+ Opcode ZEND_FREE
-- Op type: IS_TMP_VAR
-- Op type: IS_UNUSED
-
-+ Opcode ZEND_RETURN
-- Op type: IS_CONST value: '0'
-- Op type: IS_UNUSED
-
-- EG(return_value_ptr_ptr) = 0xbfffe3a0 (type: null refcount: 1 is_ref: 0)
+- EG(return_value_ptr_ptr) = 0xbfffdc10 (type: null refcount: 1 is_ref: 0)
 }}}
