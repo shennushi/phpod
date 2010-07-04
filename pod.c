@@ -24,20 +24,17 @@
 
 #include "php.h"
 #include "php_pod.h"
+#include "php_pod_execute.h"
 
 #undef EX
 #define EX(element) execute_data->element
 
-#define CHECK_SYMBOL_TABLES()
-#define ZEND_VM_SET_OPCODE(new_op) \
-	CHECK_SYMBOL_TABLES(); \
-	EX(opline) = new_op
-
 static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
-static void pod_dump_op(znode *op);
-static void pod_dump_zval(zval **var);
+static void pod_dump_op(znode *op TSRMLS_DC);
+static void pod_dump_zval(zval *var);
+static zval **_get_zval_cv_lookup(zval ***ptr, zend_uint var, int type TSRMLS_DC);
 
 static const char *pod_opcodes[] = {
 	"ZEND_NOP",
@@ -178,6 +175,17 @@ static const char *pod_opcodes[] = {
 };
 
 /*
+ * Dumps the current opcode
+ */
+static void pod_dump_opcode(TSRMLS_D)
+{
+	printf("+ Opcode %s\n", pod_opcodes[PX(opline)->opcode]);
+	pod_dump_op(&PX(opline)->op1 TSRMLS_CC);
+	pod_dump_op(&PX(opline)->op2 TSRMLS_CC);
+	printf("\n");
+}
+
+/*
  * Returns the operand type
  */
 static inline const char* pod_op_type_name(int op_type)
@@ -194,34 +202,59 @@ static inline const char* pod_op_type_name(int op_type)
 /*
  * Dumps an operand 
  */
-static void pod_dump_op(znode *op)
+static void pod_dump_op(znode *op TSRMLS_DC)
 {
 	printf("- Op type: %s", pod_op_type_name(op->op_type));
 	
 	if (op->op_type == IS_CONST) {
-		switch (Z_TYPE(op->u.constant)) {
-			case IS_LONG:
-			case IS_RESOURCE:
-			case IS_NULL:
-			case IS_BOOL:
-				printf(" value: '%ld'", Z_LVAL(op->u.constant));
-				break;
-			case IS_STRING:
-				printf(" value: '%s'", Z_STRVAL(op->u.constant));
-				break;
-			case IS_OBJECT:
-				printf(" value: object");				
+		pod_dump_zval(&op->u.constant);
+	} else if (op->op_type == IS_VAR) {
+		zval **var = T(op->u.var).var.ptr_ptr;
+		
+		if (var != NULL) {
+			pod_dump_zval(*var);
 		}
+	} else if (op->op_type == IS_CV) {
+		zval ***ptr = &CV_OF(op->u.var);
+		zval **var;
+		char *var_name;
+		
+		if (UNEXPECTED(*ptr == NULL)) {
+			var = pod_get_zval_cv_lookup(ptr, op->u.var, BP_VAR_W, &var_name TSRMLS_CC);
+		} else {
+			var = *ptr;
+		}
+		if (var) {
+			if (var_name) {
+				printf(" '%s'", var_name);
+			}
+			pod_dump_zval(*var);
+		}
+	} else {
+		printf("\n");
 	}
-	printf("\n");
+	
 }
 
 /*
  * Dumps the zval
  */
-static void pod_dump_zval(zval **var)
+static void pod_dump_zval(zval *var)
 {
-	printf("(type: %s refcount: %d is_ref: %d)\n", zend_get_type_by_const(Z_TYPE_PP(var)), Z_REFCOUNT_PP(var), Z_ISREF_PP(var));
+	switch (Z_TYPE_P(var)) {
+		case IS_LONG:
+		case IS_RESOURCE:
+		case IS_NULL:
+		case IS_BOOL:
+			printf(" '%ld'", Z_LVAL_P(var));
+			break;
+		case IS_STRING:
+			printf(" '%s'", Z_STRVAL_P(var));
+			break;
+		case IS_OBJECT:
+			printf(" object");				
+	}
+	printf(" (type: %s refcount: %d is_ref: %d)\n", zend_get_type_by_const(Z_TYPE_P(var)), Z_REFCOUNT_P(var), Z_ISREF_P(var));
 }
 
 /*
@@ -281,10 +314,7 @@ zend_vm_enter:
 			zend_timeout(0);
 		}
 #endif
-		printf("+ Opcode %s\n", pod_opcodes[EX(opline)->opcode]);
-		pod_dump_op(&EX(opline)->op1);
-		pod_dump_op(&EX(opline)->op2);
-		printf("\n");
+		pod_dump_opcode(TSRMLS_C);
 		
 		if (next_opcode == ZEND_PRINT) {
 			printf("-- Start output:\n");
@@ -295,8 +325,8 @@ zend_vm_enter:
 				case 1:
 					EG(in_execution) = original_in_execution;
 					if (next_opcode == ZEND_RETURN) {
-						printf("- EG(return_value_ptr_ptr) = %p ", EG(return_value_ptr_ptr));
-						pod_dump_zval(EG(return_value_ptr_ptr));
+						printf("- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
+						pod_dump_zval(*EG(return_value_ptr_ptr));
 					}
 					return;
 				case 2:
