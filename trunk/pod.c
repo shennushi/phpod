@@ -34,8 +34,10 @@ static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
 static void pod_dump_op(znode *op TSRMLS_DC);
 static void pod_dump_zval(zval *var);
-static zval **_get_zval_cv_lookup(zval ***ptr, zend_uint var, int type TSRMLS_DC);
 
+/*
+ * Zend opcodes
+ */
 static const char *pod_opcodes[] = {
 	"ZEND_NOP",
 	"ZEND_ADD",
@@ -215,9 +217,8 @@ static void pod_dump_op(znode *op TSRMLS_DC)
 			pod_dump_zval(*var);
 		}
 	} else if (op->op_type == IS_CV) {
-		zval ***ptr = &CV_OF(op->u.var);
-		zval **var;
-		char *var_name;
+		zval **var, ***ptr = &CV_OF(op->u.var);
+		char *var_name = NULL;
 		
 		if (UNEXPECTED(*ptr == NULL)) {
 			var = pod_get_zval_cv_lookup(ptr, op->u.var, BP_VAR_W, &var_name TSRMLS_CC);
