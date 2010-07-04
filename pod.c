@@ -350,7 +350,7 @@ zend_vm_enter:
 					EG(in_execution) = original_in_execution;
 					if (next_opcode == ZEND_RETURN) {
 						if (EG(return_value_ptr_ptr)) {
-							fprintf(POD_G(dump_file), "- EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
+							fprintf(POD_G(dump_file), "# EG(return_value_ptr_ptr) = %p", EG(return_value_ptr_ptr));
 							pod_dump_zval(*EG(return_value_ptr_ptr) TSRMLS_CC);
 						}
 					}
