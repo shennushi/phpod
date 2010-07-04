@@ -27,6 +27,16 @@ extern zend_module_entry pod_module_entry;
 #include "TSRM.h"
 #endif
 
+#define CHECK_SYMBOL_TABLES()
+#define ZEND_VM_SET_OPCODE(new_op) \
+	CHECK_SYMBOL_TABLES(); \
+	EX(opline) = new_op
+
+#define PX(element) EG(current_execute_data)->element
+#define T(offset) (*(temp_variable *)((char *) PX(Ts) + offset))
+#define CV_OF(i)     (EG(current_execute_data)->CVs[i])
+#define CV_DEF_OF(i) (EG(active_op_array)->vars[i])
+
 PHP_MINIT_FUNCTION(pod);
 PHP_MSHUTDOWN_FUNCTION(pod);
 PHP_RINIT_FUNCTION(pod);
