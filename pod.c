@@ -436,7 +436,9 @@ PHP_RINIT_FUNCTION(pod)
 	zend_execute = pod_execute;
 	
 	if (memcmp(POD_G(dump_path), "", 1)) {
-		POD_G(dump_file) = fopen(POD_G(dump_path), "w");
+		if (!(POD_G(dump_file) = fopen(POD_G(dump_path), "w"))) {
+			POD_G(dump_file) = stderr;
+		}
 	}
 	
 	return SUCCESS;
