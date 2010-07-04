@@ -1,0 +1,8 @@
+// $Id$
+
+ARG_ENABLE("pod", "enable pod support", "no");
+
+if (PHP_POD != "no") {
+	EXTENSION("pod", "pod.c");
+}
+
