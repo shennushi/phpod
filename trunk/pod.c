@@ -229,7 +229,7 @@ static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_
 		char *var_name = NULL;
 		
 		if (UNEXPECTED(*ptr == NULL)) {
-			var = pod_get_zval_cv_lookup(ptr, OP_VAR(op), BP_VAR_W, &var_name TSRMLS_CC);
+			var = pod_get_zval_cv_lookup(ptr, OP_VAR(op), &var_name TSRMLS_CC);
 		} else {
 			var = *ptr;
 		}
