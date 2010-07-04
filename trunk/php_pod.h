@@ -27,6 +27,17 @@ extern zend_module_entry pod_module_entry;
 #include "TSRM.h"
 #endif
 
+ZEND_BEGIN_MODULE_GLOBALS(pod)
+	char *dump_path;
+	FILE *dump_file;
+ZEND_END_MODULE_GLOBALS(pod)
+
+#ifdef ZTS
+#define POD_G(v) TSRMG(pod_globals_id, zend_pod_globals *, v)
+#else
+#define POD_G(v) (pod_globals.v)
+#endif
+
 #if ZEND_MODULE_API_NO >= 20100409
 #define ZEND_ENGINE_2_4
 #endif
