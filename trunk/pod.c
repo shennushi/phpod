@@ -34,7 +34,7 @@ ZEND_DECLARE_MODULE_GLOBALS(pod);
 static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
-static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC);
+static void pod_dump_op(const char* label, ZNODE *op, zend_uchar op_type TSRMLS_DC);
 static void pod_dump_zval(zval *var TSRMLS_DC);
 
 PHP_INI_BEGIN()
@@ -196,19 +196,6 @@ static void pod_init_globals(zend_pod_globals *pod_globals)
 }
 
 /*
- * Dumps the current opcode
- */
-static void pod_dump_opcode(TSRMLS_D)
-{
-	fprintf(POD_G(dump_file), "+ Opcode %s\n", pod_opcodes[PX(opline)->opcode]);
-	pod_dump_op(&PX(opline)->op1, OP1_TYPE(PX(opline)) TSRMLS_CC);
-	pod_dump_op(&PX(opline)->op2, OP2_TYPE(PX(opline)) TSRMLS_CC);
-	fprintf(POD_G(dump_file), "- Extended value: %lu\n", PX(opline)->extended_value);
-	fprintf(POD_G(dump_file), "- Line: %u\n", PX(opline)->lineno);
-	fprintf(POD_G(dump_file), "\n");
-}
-
-/*
  * Returns the operand type
  */
 static inline const char* pod_op_type_name(int op_type)
@@ -225,9 +212,9 @@ static inline const char* pod_op_type_name(int op_type)
 /*
  * Dumps an operand 
  */
-static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
+static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_DC)
 {
-	fprintf(POD_G(dump_file), "- Op type: %s", pod_op_type_name(op_type));
+	fprintf(POD_G(dump_file), "- %s: %s", label, pod_op_type_name(op_type));
 	
 	if (op_type == IS_CONST) {
 		pod_dump_zval(ZVAL_OP_CONST(op) TSRMLS_CC);
@@ -251,6 +238,12 @@ static void pod_dump_op(ZNODE *op, zend_uchar op_type TSRMLS_DC)
 				fprintf(POD_G(dump_file), " '%s'", var_name);
 			}
 			pod_dump_zval(*var TSRMLS_CC);
+		}
+	} else if (op_type == IS_TMP_VAR) {
+		zval *var = &T(OP_VAR(op)).tmp_var;
+		
+		if (var) {
+			pod_dump_zval(var TSRMLS_CC);
 		}
 	} else {
 		fprintf(POD_G(dump_file), "\n");
@@ -276,7 +269,7 @@ static void pod_dump_zval(zval *var TSRMLS_DC)
 		case IS_OBJECT:
 			fprintf(POD_G(dump_file), " object");				
 	}
-	fprintf(POD_G(dump_file), " (type: %s refcount: %d is_ref: %d)\n", zend_get_type_by_const(Z_TYPE_P(var)), Z_REFCOUNT_P(var), Z_ISREF_P(var));
+	fprintf(POD_G(dump_file), " %p (type: %s; refcount: %d; is_ref: %d)\n", var, zend_get_type_by_const(Z_TYPE_P(var)), Z_REFCOUNT_P(var), Z_ISREF_P(var));
 }
 
 /*
@@ -288,6 +281,7 @@ static void pod_execute(zend_op_array *op_array TSRMLS_DC)
 	zend_bool nested = 0;
 	zend_bool original_in_execution = EG(in_execution);
 	zend_uchar next_opcode = 0;
+	zend_op *last_opline = NULL;
 
 	if (EG(exception)) {
 		return;
@@ -343,8 +337,12 @@ zend_vm_enter:
 		if (EG(timed_out)) {
 			zend_timeout(0);
 		}
-#endif
-		pod_dump_opcode(TSRMLS_C);
+#endif	
+		fprintf(POD_G(dump_file), "+ Opcode %s\n", pod_opcodes[EX(opline)->opcode]);
+		pod_dump_op("Op1", &EX(opline)->op1, OP1_TYPE(EX(opline)) TSRMLS_CC);
+		pod_dump_op("Op2", &EX(opline)->op2, OP2_TYPE(EX(opline)) TSRMLS_CC);
+		
+		last_opline = EX(opline);
 		
 		if ((ret = EX(opline)->handler(execute_data TSRMLS_CC)) > 0) {
 			switch (ret) {
@@ -366,6 +364,13 @@ zend_vm_enter:
 					break;
 			}
 		}
+		if (RETURN_VALUE_USED(last_opline)) {
+			pod_dump_op("Result", &last_opline->result, RES_TYPE(last_opline) TSRMLS_CC);
+		}
+		fprintf(POD_G(dump_file), "- Extended value: %lu\n", last_opline->extended_value);
+		fprintf(POD_G(dump_file), "- Line: %u\n", last_opline->lineno);
+		fprintf(POD_G(dump_file), "\n");
+		
 		next_opcode = EX(opline)->opcode;
 	}
 	zend_error_noreturn(E_ERROR, "Arrived at end of main loop which shouldn't happen");
