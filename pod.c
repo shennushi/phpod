@@ -35,6 +35,7 @@ static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
 static void pod_dump_op(const char* label, ZNODE *op, zend_uchar op_type TSRMLS_DC);
+static void pdo_dump_class_entry(zend_class_entry *ce TSRMLS_DC);
 static void pod_dump_zval(zval *var TSRMLS_DC);
 
 PHP_INI_BEGIN()
@@ -180,7 +181,7 @@ static const char *pod_opcodes[] = {
 	"ZEND_USER_OPCODE",
 	"ZEND_JMP_SET",
 	"ZEND_DECLARE_LAMBDA_FUNCTION"
-#if ZEND_ENGINE_2_4
+#ifdef ZEND_ENGINE_2_4
 	,"ZEND_ADD_TRAIT",
 	"ZEND_BIND_TRAITS"
 #endif	
@@ -221,7 +222,9 @@ static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_
 	} else if (op_type == IS_VAR) {
 		zval **var = T(OP_VAR(op)).var.ptr_ptr;
 		
-		if (var != NULL) {
+		if (T(OP_VAR(op)).class_entry && T(OP_VAR(op)).class_entry->name) {
+			pdo_dump_class_entry(T(OP_VAR(op)).class_entry TSRMLS_CC);
+		} else if (var != NULL) {
 			pod_dump_zval(*var TSRMLS_CC);
 		}
 	} else if (op_type == IS_CV) {
@@ -249,6 +252,14 @@ static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_
 		fprintf(POD_G(dump_file), "\n");
 	}
 	
+}
+
+/*
+ * Dumps the class entry
+ */
+static void pdo_dump_class_entry(zend_class_entry *ce TSRMLS_DC)
+{
+	fprintf(POD_G(dump_file), " %p (class name: %s)\n", ce, ce->name);
 }
 
 /*
