@@ -34,7 +34,7 @@ ZEND_DECLARE_MODULE_GLOBALS(pod);
 static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
 static void pod_execute(zend_op_array *op_array TSRMLS_DC);
 
-static void pod_dump_op(const char* label, ZNODE *op, zend_uchar op_type TSRMLS_DC);
+static void pod_dump_op(const char* label, zend_uchar opcode, ZNODE *op, zend_uchar op_type TSRMLS_DC);
 static void pdo_dump_class_entry(zend_class_entry *ce TSRMLS_DC);
 static void pod_dump_zval(zval *var TSRMLS_DC);
 
@@ -213,7 +213,7 @@ static inline const char* pod_op_type_name(int op_type)
 /*
  * Dumps an operand 
  */
-static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_DC)
+static void pod_dump_op(const char *label, zend_uchar opcode, ZNODE *op, zend_uchar op_type TSRMLS_DC)
 {
 	fprintf(POD_G(dump_file), "- %s: %s", label, pod_op_type_name(op_type));
 	
@@ -222,10 +222,16 @@ static void pod_dump_op(const char *label, ZNODE *op, zend_uchar op_type TSRMLS_
 	} else if (op_type == IS_VAR) {
 		zval **var = T(OP_VAR(op)).var.ptr_ptr;
 		
-		if (T(OP_VAR(op)).class_entry && T(OP_VAR(op)).class_entry->name) {
-			pdo_dump_class_entry(T(OP_VAR(op)).class_entry TSRMLS_CC);
-		} else if (var != NULL) {
-			pod_dump_zval(*var TSRMLS_CC);
+		switch (opcode) {
+			case ZEND_FETCH_CLASS:
+			case ZEND_NEW:
+				pdo_dump_class_entry(T(OP_VAR(op)).class_entry TSRMLS_CC);
+				break;
+			default:
+				if (var != NULL) {
+					pod_dump_zval(*var TSRMLS_CC);
+				}
+				break;
 		}
 	} else if (op_type == IS_CV) {
 		zval **var, ***ptr = &CV_OF(OP_VAR(op));
@@ -350,8 +356,8 @@ zend_vm_enter:
 		}
 #endif	
 		fprintf(POD_G(dump_file), "+ Opcode %s\n", pod_opcodes[EX(opline)->opcode]);
-		pod_dump_op("Op1", &EX(opline)->op1, OP1_TYPE(EX(opline)) TSRMLS_CC);
-		pod_dump_op("Op2", &EX(opline)->op2, OP2_TYPE(EX(opline)) TSRMLS_CC);
+		pod_dump_op("Op1", EX(opline)->opcode, &EX(opline)->op1, OP1_TYPE(EX(opline)) TSRMLS_CC);
+		pod_dump_op("Op2", EX(opline)->opcode, &EX(opline)->op2, OP2_TYPE(EX(opline)) TSRMLS_CC);
 		
 		last_opline = EX(opline);
 		
@@ -376,7 +382,7 @@ zend_vm_enter:
 			}
 		}
 		if (RETURN_VALUE_USED(last_opline)) {
-			pod_dump_op("Result", &last_opline->result, RES_TYPE(last_opline) TSRMLS_CC);
+			pod_dump_op("Result", last_opline->opcode, &last_opline->result, RES_TYPE(last_opline) TSRMLS_CC);
 		}
 		fprintf(POD_G(dump_file), "- Extended value: %lu\n", last_opline->extended_value);
 		fprintf(POD_G(dump_file), "- Line: %u\n", last_opline->lineno);
